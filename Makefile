@@ -1,5 +1,5 @@
 INCLUDE = -I/usr/include/qt
-OPTIONS = -fpic -Wall -Wextra
+OPTIONS = -fpic -g -Wall -Wextra
 LIBS = -lQt5Core -lQt5Gui -lQt5Widgets
 
 all:

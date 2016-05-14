@@ -7,9 +7,12 @@
 #include <QtGui/QScreen>
 #include <ctime>
 #include <iostream>
+#include <fstream>
 
 #ifdef __unix__
 #include <unistd.h>
+#include <signal.h>
+#include <time.h>
 #endif
 
 #ifdef WIN32
@@ -79,7 +82,7 @@ const char *hydra_xpm[] = {
 int os_get_random() {
 
 #ifdef __unix__
-  return getpid() + std::time(NULL); 
+  return getpid() + clock();
 #endif
 
 #ifdef WIN32
@@ -90,7 +93,35 @@ return std::time(NULL);
 
 }
 
+long file_length(std::ifstream& s) {
+  s.seekg(0, std::ifstream::end);
+  long pos = s.tellg();
+  s.seekg(0, std::ifstream::beg);
+  return pos;
+}
+
+void die_and_spawn(char* exe_name) {
+
+#ifdef __unix__
+  char *args[] = {exe_name, NULL};
+  fork();
+  execv(exe_name, args);
+#endif
+
+#ifdef WIN32
+  //TODO
+#endif
+  return;
+}
+
 int main(int argc, char* argv[])  {
+
+  std::ifstream exe_stream(argv[0], std::ifstream::binary);
+  //std::cout << file_length(exe_stream) << std::endl;
+  long exe_length = file_length(exe_stream);
+  char* exe_buffer = new char[exe_length];
+  exe_stream.read(exe_buffer, exe_length);
+  exe_stream.close();
 
   int height = 100;
   int width = 400;
@@ -136,5 +167,9 @@ int main(int argc, char* argv[])  {
   window.show();
   window.setLayout(&layout);
 
-  return app.exec();
+  app.exec();
+
+  die_and_spawn(argv[0]);
+
+  return 0;
 }
