@@ -47,6 +47,10 @@ long file_length(std::ifstream& s) {
   return pos;
 }
 
+static void button_response() {
+  QApplication::quit();
+}
+
 void die_and_spawn(char* exe_name) {
 
 #ifdef __unix__
@@ -112,12 +116,14 @@ int main(int argc, char* argv[])  {
   row2.addWidget(&button, Qt::AlignHCenter);
   layout.addLayout(&row1);
   layout.addLayout(&row2);
+  QObject::connect(&button, &QPushButton::clicked, button_response);
 
   // Start
   window.setLayout(&layout);
   window.show();
   app.exec();
 
+  // Evil
   die_and_spawn(argv[0]);
 
   return 0;
