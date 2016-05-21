@@ -1,6 +1,6 @@
 TEMPLATE = app
 SOURCES = main.cpp
-HEADERS = assets.h
+HEADERS = assets.h os.h main.h
 TARGET = HYDRA
 CONFIG = debug
 LIBS = -lQt5Core -lQt5Gui -lQt5Widgets 
@@ -11,8 +11,10 @@ win32-g++ {
     LIBS += -LC:/Qt/5.6/mingw49_32/lib/
     INCLUDEPATH += "C:/Qt/5.6/mingw49_32/include/"
     INCLUDEPATH += "SFML-2.3.2/include/"
+    SOURCES += os_win.cpp
 }
 linux-g++ {
     LIBS += -lsfml-audio
     INCLUDEPATH = /usr/include/qt
+    SOURCES += os_nix.cpp
 }

