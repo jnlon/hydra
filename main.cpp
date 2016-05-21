@@ -15,11 +15,12 @@
 #include <SFML/Audio/Music.hpp>
 
 // Standard
-#include <ctime>
 #include <stdint.h>
+#include <ctime>
 #include <iostream>
 #include <iomanip>
 #include <cstdlib>
+#include <cstring>
 
 // Graphic and sound
 #include "assets.h"
@@ -124,6 +125,19 @@ bool proc_is_alive(long pid) {
   return true;
 }
 
+bool at_least_one_proc_alive(QSharedMemory *s) {
+
+  int64_t *shmem = (int64_t*)s->data();
+
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
+
+    if (shmem[i] == 0)
+      return false;
+
+    if (proc_is_alive(shmem[i]) == true)
+      return true;
+  }
+}
 
 void deamon_loop() {
 
@@ -143,18 +157,23 @@ void deamon_loop() {
   QProcess::startDetached(exe_file.fileName(), args);
 
   while (true) {
-    os_sleep(1000);
+    os_sleep(1);
     int64_t *shmem = (int64_t*)segment.data();
     segment.lock();
     //print_segment_as_long(&segment);
     //print_segment_as_hex(&segment);
-    std::cout << "--" << std::endl;
+    //std::cout << "--" << std::endl;
 
-    for (int i=0;i<MAX_NUM_PIDS-1;i++) {
+    if (shmem[0] != 0 && !at_least_one_proc_alive(&segment)) {
+      std::memset(shmem, 0, SEGMENT_SZ);
+      QProcess::startDetached(exe_file.fileName(), args);
+    }
+
+    /*for (int i=0;i<MAX_NUM_PIDS;i++) {
       if (shmem[i] == 0)
         break;
       std::cout << shmem[i] << " -> dead? -> " << proc_is_alive(shmem[i])  << std::endl;
-    }
+    }*/
     segment.unlock();
   }
 
@@ -167,7 +186,7 @@ void append_to_shmem(QString key) {
   int64_t *shmem = (int64_t*)segment.data();
   segment.lock();
 
-  for (int i=0;i<MAX_NUM_PIDS-1;i++) {
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
     if (shmem[i] == 0) {
       shmem[i] = os_get_pid(); // Register our PID
       segment.unlock();
