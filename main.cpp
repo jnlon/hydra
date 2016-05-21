@@ -32,7 +32,7 @@
 #include <errno.h>
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
 #include <windows.h>
 #endif
 
@@ -54,8 +54,8 @@ int os_get_random() {
   return getpid() + clock();
 #endif
 
-#ifdef WIN32
-  return (GetTickCount64t()%99999) + std::time(NULL);
+#ifdef _WIN32
+  return (GetTickCount()%99999) + std::time(NULL);
 #endif
 
   return std::time(NULL);
@@ -66,7 +66,7 @@ void os_sleep(long ms) {
   usleep(ms*1000);
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
   Sleep(ms);
 #endif
   return;
@@ -77,8 +77,8 @@ int64_t os_get_pid() {
   return (int64_t)getpid();
 #endif
 
-#ifdef WIN32
-  return (int64_t)GetProcessId();
+#ifdef _WIN32
+  return (int64_t)GetCurrentProcessId();
 #endif
 }
 
@@ -116,11 +116,11 @@ bool proc_is_alive(long pid) {
   }
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
   HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
   if (proc == NULL)
     return false;
-  CloseProcess(proc);
+  CloseHandle(proc);
 #endif
   return true;
 }
@@ -243,7 +243,7 @@ void trap_setup() {
   signal(SIGHUP, spawn_wrapper);
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
   //TODO
 #endif
   return;

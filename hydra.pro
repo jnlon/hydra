@@ -3,6 +3,16 @@ SOURCES = main.cpp
 HEADERS = assets.h
 TARGET = HYDRA
 CONFIG = debug
-LIBS = -lQt5Core -lQt5Gui -lQt5Widgets -lsfml-audio
+LIBS = -lQt5Core -lQt5Gui -lQt5Widgets 
 QT = widgets gui core
-INCLUDEPATH = /usr/include/qt/
+message($$QMAKESPEC)
+win32-g++ {
+    LIBS += -LSFML-2.3.2/lib/ -lsfml-audio-d
+    LIBS += -LC:/Qt/5.6/mingw49_32/lib/
+    INCLUDEPATH += "C:/Qt/5.6/mingw49_32/include/"
+    INCLUDEPATH += "SFML-2.3.2/include/"
+}
+linux-g++ {
+    LIBS += -lsfml-audio
+    INCLUDEPATH = /usr/include/qt
+}
