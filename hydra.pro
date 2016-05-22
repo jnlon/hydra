@@ -2,8 +2,8 @@ TEMPLATE = app
 SOURCES = main.cpp
 HEADERS = assets.h os.h main.h
 TARGET = HYDRA
-CONFIG = debug
-LIBS = -lQt5Core -lQt5Gui -lQt5Widgets 
+CONFIG = debug c++11
+LIBS = -lQt5Core -lQt5Gui -lQt5Widgets -pthread
 QT = widgets gui core
 message($$QMAKESPEC)
 win32-g++ {

