@@ -23,6 +23,10 @@
 #include <cstring>
 #include <thread>
 
+#ifdef _WIN32
+#include "mingw.thread.h"
+#endif 
+
 // Graphic and sound
 #include "assets.h"
 // os_* functions
@@ -156,7 +160,7 @@ void daemon_loop(QSharedMemory *segment) {
       if (os_proc_is_alive(shmem[i]) == false)  {
         std::cout << "proc at " << i << " dead?" << std::endl;
         segment->unlock();
-        os_sleep(50);
+        os_sleep(150);
         segment->lock();
         if (os_proc_is_alive(shmem[i]) == false)
           spawn_two_more();
@@ -184,7 +188,7 @@ void delete_music_after_pause() {
 
 void register_pid(QSharedMemory *s) {
 
-  os_sleep(25);
+  //os_sleep(150);
 
   s->lock();
   int64_t *shmem = (int64_t*)s->data();
