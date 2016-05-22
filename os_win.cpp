@@ -5,12 +5,12 @@ void os_sleep(long ms) {
   Sleep(ms);
 }
 
-int os_get_random() {
-  return (GetTickCount()%99999);
-}
-
 int64_t os_get_pid() {
   return (int64_t)GetCurrentProcessId();
+}
+
+int os_get_random() {
+  return (GetTickCount()%99999) + os_get_pid();
 }
 
 bool os_proc_is_alive(int64_t pid) {
