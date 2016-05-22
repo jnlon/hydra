@@ -141,7 +141,7 @@ void daemon_loop(QSharedMemory *segment) {
 
   print_segment_as_hex(segment);
 
-  spawn_two_more();
+  QProcess::startDetached(exe_file.fileName());
 
   while (true) {
     os_sleep(1);
@@ -160,7 +160,7 @@ void daemon_loop(QSharedMemory *segment) {
       if (os_proc_is_alive(shmem[i]) == false)  {
         std::cout << "proc at " << i << " dead?" << std::endl;
         segment->unlock();
-        os_sleep(150);
+        os_sleep(200);
         segment->lock();
         if (os_proc_is_alive(shmem[i]) == false)
           spawn_two_more();
@@ -188,7 +188,7 @@ void delete_music_after_pause() {
 
 void register_pid(QSharedMemory *s) {
 
-  //os_sleep(150);
+  os_sleep(100);
 
   s->lock();
   int64_t *shmem = (int64_t*)s->data();
