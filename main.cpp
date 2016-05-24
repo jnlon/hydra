@@ -35,7 +35,8 @@
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
-#define MAX_NUM_PIDS 30
+#define MAX_NUM_PIDS 300
+#define BACKGROUND_HYDRAS 100
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
 
@@ -43,6 +44,8 @@ QFile exe_file;
 QByteArray exe_data;
 int perms;
 sf::Music *music;
+QSharedMemory *GLO_sharedmem;
+QStringList NO_ARGS;
 
 /* Just a  QButton callback */
 static void button_response() {
@@ -73,71 +76,66 @@ int64_t get_shmem(int at, QSharedMemory *s) {
   return thing;
 }
 
+/* Goes through the shared memory segment and adds the PID of this process to
+ * the first available spot */
+void register_pid(QSharedMemory *s, int64_t pid) {
+
+  int64_t *shmem = (int64_t*)s->data();
+
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
+    if (os_proc_is_alive(shmem[i]) == false || shmem[i] == 0) {
+      shmem[i] = pid;
+      return;
+    }
+  }
+}
+
+void spawn_and_register_one() {
+
+  qint64 pid;
+  QProcess::startDetached(exe_file.fileName(), NO_ARGS, ".", &pid);
+  register_pid(GLO_sharedmem, pid);
+
+}
+
 /* Self explanatory. Also, check to make sure the executable still exists.
  * If not, rewrite it and set the correct permissions. */
 void spawn_two_more() {
 
-  QString exe_name = exe_file.fileName();
-
   if (!exe_file.exists()) {
-    QFile out_stream(exe_name);
+    QFile out_stream(exe_file.fileName());
     out_stream.open(QIODevice::WriteOnly);
     out_stream.write(exe_data);
     out_stream.setPermissions((QFileDevice::Permissions)perms);
     out_stream.close();
   }
 
-  QProcess::startDetached(exe_name);
-  QProcess::startDetached(exe_name);
+  std::cout << "Spawning two!" << std::endl;
+
+  spawn_and_register_one();
+  spawn_and_register_one();
 }
 
-/* When there are no other hydras, enter the daemon loop. If we get here, this
- * process remain here until it is killed. daemon_loop is in charge of resurrecting
- * dead hydras that can't save themselves */
-void daemon_loop(QSharedMemory *segment) {
-
-  int64_t this_pid = os_get_pid();
-  std::cout << "daemon is pid " << this_pid << std::endl;
-
-  segment->create(SEGMENT_SZ, QSharedMemory::ReadWrite);
-
-  segment->lock();
-
-  int64_t *data = (int64_t*)segment->data();
-  memset(data, 0, SEGMENT_SZ); // Clear the shared memory
-  data[0] = this_pid;  // Set the first cell in memory to daemon's PID
-  print_segment_as_hex(segment);
-
-  segment->unlock();
-
-  // Start the first hydra dialog
-  QProcess::startDetached(exe_file.fileName());
+void thread_verify_hydras(QSharedMemory *segment) {
 
   // Continually monitor other Hydras, and respawn them if necessary.
   // Normally, hydras respawn themselves, but if they were killed in a harsh way 
   // (eg, SIGKILL) we respawn them here
+  int64_t *shmem = (int64_t*)segment->data();
   while (true) {
 
     segment->lock();
-
-    int64_t *shmem = (int64_t*)segment->data();
-    print_segment_as_hex(segment);
-
-    std::cout << "--- " << std::endl;
+    //print_segment_as_hex(segment);
+    //std::cout << "--- " << std::endl;
 
     for (int i=0;i<MAX_NUM_PIDS;i++) {
       if (shmem[i] == 0) // Out of range!
         break;
 
-      // Looks like the poor Hydra was killed!
-      if (os_proc_is_alive(shmem[i]) == false)  {
-        std::cout << "proc at " << i << " dead?" << std::endl;
-
-        segment->unlock();
-        os_sleep(200);  // Timing hack: is it really dead, or are we just waiting it to launch?
-        segment->lock();
-        if (os_proc_is_alive(shmem[i]) == false) // Looks like it was really killed!
-          spawn_two_more();
+      if (!os_proc_is_alive(shmem[i]))  {
+        std::cout << "proc at " << i << " dead?" << " (" << os_get_pid() << ")"<< std::endl;
+        spawn_two_more();
+        break;
       }
     }
     segment->unlock();
@@ -151,52 +149,103 @@ void delete_music_after_pause() {
   delete music;
 }
 
-/* Goes through the shared memory segment and adds the PID of this process to
- * the first available spot */
-void register_pid(QSharedMemory *s) {
+bool all_dead(QSharedMemory *segment) {
 
-  os_sleep(100);
-
-  s->lock();
-  int64_t *shmem = (int64_t*)s->data();
+  segment->lock();
+  int64_t *shmem = (int64_t*)segment->data();
 
   for (int i=0;i<MAX_NUM_PIDS;i++) {
-    if (os_proc_is_alive(shmem[i]) == false || shmem[i] == 0) {
-      shmem[i] = os_get_pid();
-      s->unlock();
-      return;
+    if (shmem[i] == 0)
+      break;
+
+    if (os_proc_is_alive(shmem[i])) {
+      segment->unlock();
+      return false;
     }
   }
-  s->unlock();
+
+  segment->unlock();
+
+  return true;
+
+}
+
+int count_hydras(QSharedMemory *segment) {
+
+  segment->lock();
+  int64_t *shmem = (int64_t*)segment->data();
+
+  int num_hydras = 0;
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
+    if (shmem[i] == 0)
+      break;
+
+    if (os_proc_is_alive(shmem[i]))
+      num_hydras += 1;
+  }
+
+  segment->unlock();
+
+  return num_hydras;
+
 }
 
 
+
+void reset_shared_mem(QSharedMemory *segment) {
+
+  segment->lock();
+  memset(segment->data(), 0, SEGMENT_SZ);
+  segment->unlock();
+
+}
 
 int main(int argc, char* argv[])  {
 
   exe_file.setFileName(argv[0]);
   QSharedMemory segment("hydra :)");
+  GLO_sharedmem = &segment;
   bool shmem_attached = segment.attach(QSharedMemory::ReadWrite);
 
   // First run! Our memory segment does not exist yet!
-  if (!shmem_attached)  {
-    std::cout << "Are we first shmem instance?!" << std::endl;
-    daemon_loop(&segment);
+  if (!shmem_attached) {
+    std::cout << "Did not attach, resetting!" << std::endl;
+    segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
+    segment.attach(QSharedMemory::ReadWrite);
+    reset_shared_mem(&segment);
   }
 
-  // Looks like our master daemon is dead! This PID will take over its role.
-  if (!os_proc_is_alive(get_shmem(0, &segment)))  {
-    std::cout << "Daemon looks dead! " << std::endl;
-    daemon_loop(&segment);
+  if (all_dead(&segment)) {
+    std::cout << "Leftovers, resetting shared mem!" << std::endl;
+    reset_shared_mem(&segment);
+    //segment.lock();
+    //spawn_and_register_one();
+    //segment.unlock();
+    //thread_verify_hydras(&segment);
   }
+
+  if (count_hydras(&segment) < BACKGROUND_HYDRAS) {
+    segment.lock();
+
+    spawn_and_register_one();
+
+    segment.unlock();
+    thread_verify_hydras(&segment);
+  }
+
+  /*if (count_hydras(&segment) < BACKGR) {
+    segment.lock();
+    spawn_and_register_one();
+    segment.unlock();
+    thread_verify_hydras(&segment);
+  }*/
 
   // Setup signal callbacks
   os_trap_setup();
 
-  std::cout << "Registering pid!" << std::endl;
-  register_pid(&segment);
-
-  // TODO: Have a new thread constantly check to see if daemon is alive
+  // Have a new thread constantly check to see if daemon is alive
+  std::thread t1(thread_verify_hydras, &segment);
+  t1.detach();
 
   // Read in the executable file, in case they try to delete it
   exe_file.open(QIODevice::ReadOnly);
@@ -267,7 +316,7 @@ int main(int argc, char* argv[])  {
   t.join();
 
   // Evil
-  spawn_two_more();
+  //spawn_two_more();
 
   return 0;
 }
