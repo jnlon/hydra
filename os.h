@@ -3,4 +3,4 @@ void os_sleep(long ms);
 int64_t os_get_pid();
 bool os_proc_is_alive(int64_t pid);
 void os_trap_setup();
-int64_t os_exec_path(char* path);
+int64_t os_exec_path(std::wstring path);

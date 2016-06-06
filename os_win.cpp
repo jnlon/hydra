@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <main.h>
 #include <stdint.h>
+#include <iostream>
 
 int32_t CREATE_PROC_FLAGS = CREATE_BREAKAWAY_FROM_JOB | 
                             CREATE_NO_WINDOW | 
@@ -33,11 +34,13 @@ BOOL WINAPI spawn_two_more_win_wrapper(DWORD t) {
     spawn_two_more();
 }
 
-int64_t os_exec_path(char* filename) {
+int64_t os_exec_path(std::wstring filename) {
   PROCESS_INFORMATION proc_info;
-  CreateProcess(filename, NULL, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, GetStartupInfo(), &proc_info);
-  int64_t pid = proc_info->dwProcessid; 
-  CloseHandle(proc_info);
+  STARTUPINFO startup_info;
+  GetStartupInfo(&startup_info);
+  CreateProcess(filename.c_str(), NULL, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, &startup_info, &proc_info);
+  int64_t pid = proc_info.dwProcessId; 
+  CloseHandle(&proc_info);
   return pid;
 }
 
