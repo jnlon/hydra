@@ -23,6 +23,14 @@ bool os_proc_is_alive(int64_t pid) {
   return true;
 }
 
+int64_t os_exec_path(char* filename) {
+  /*qint64 pid;
+  QProcess::startDetached(filename, QStringList(), ".", &pid);
+  return pid;*/
+  //TODO
+  return 0;
+}
+
 void os_trap_setup() {
   //TODO
   return;

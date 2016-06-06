@@ -45,7 +45,6 @@ QByteArray exe_data;
 int perms;
 sf::Music *music;
 QSharedMemory *GLO_sharedmem;
-QStringList NO_ARGS;
 
 /* Just a  QButton callback */
 static void button_response() {
@@ -92,8 +91,11 @@ void register_pid(QSharedMemory *s, int64_t pid) {
 
 void spawn_and_register_one() {
 
-  qint64 pid;
-  QProcess::startDetached(exe_file.fileName(), NO_ARGS, ".", &pid);
+  // Since qprocess does not detach child on windows
+  int64_t pid = os_exec_path((char*)exe_file.fileName().toStdString().c_str());
+
+  //qint64 pid;
+  //QProcess::startDetached(exe_file.fileName(), NO_ARGS, ".", &pid);
   register_pid(GLO_sharedmem, pid);
 
 }
@@ -225,11 +227,11 @@ int main(int argc, char* argv[])  {
   }
 
   if (count_hydras(&segment) < BACKGROUND_HYDRAS) {
+
     segment.lock();
-
     spawn_and_register_one();
-
     segment.unlock();
+
     thread_verify_hydras(&segment);
   }
 
