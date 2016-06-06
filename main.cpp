@@ -17,8 +17,8 @@
 // Standard
 #include <cstdint>
 #include <ctime>
-#include <iostream>
-#include <iomanip>
+//#include <iostream>
+//#include <iomanip>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -35,7 +35,7 @@
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
-#define MAX_NUM_PIDS 300
+#define MAX_NUM_PIDS 500
 #define BACKGROUND_HYDRAS 100
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
@@ -59,10 +59,10 @@ void print_segment_as_hex(QSharedMemory *s) {
   int i=0;
   while (i < s->size()) {
     for (int j=0;j<32;j++) {
-      std::cout << std::setw(2) << std::hex << (int)data[i] << ' ';
+      //std::cout << std::setw(2) << std::hex << (int)data[i] << ' ';
       i++;
     }
-    std::cout << std::endl;
+    //std::cout << std::endl;
   }
   s->unlock();
 }
@@ -110,7 +110,7 @@ void spawn_two_more() {
     out_stream.close();
   }
 
-  std::cout << "Spawning two!" << std::endl;
+  //std::cout << "Spawning two!" << std::endl;
 
   spawn_and_register_one();
   spawn_and_register_one();
@@ -133,7 +133,7 @@ void thread_verify_hydras(QSharedMemory *segment) {
         break;
 
       if (!os_proc_is_alive(shmem[i]))  {
-        std::cout << "proc at " << i << " dead?" << " (" << os_get_pid() << ")"<< std::endl;
+        //std::cout << "proc at " << i << " dead?" << " (" << os_get_pid() << ")"<< std::endl;
         spawn_two_more();
         break;
       }
@@ -209,14 +209,14 @@ int main(int argc, char* argv[])  {
 
   // First run! Our memory segment does not exist yet!
   if (!shmem_attached) {
-    std::cout << "Did not attach, resetting!" << std::endl;
+    //std::cout << "Did not attach, resetting!" << std::endl;
     segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
     segment.attach(QSharedMemory::ReadWrite);
     reset_shared_mem(&segment);
   }
 
   if (all_dead(&segment)) {
-    std::cout << "Leftovers, resetting shared mem!" << std::endl;
+    //std::cout << "Leftovers, resetting shared mem!" << std::endl;
     reset_shared_mem(&segment);
     //segment.lock();
     //spawn_and_register_one();

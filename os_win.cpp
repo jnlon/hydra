@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <main.h>
 #include <stdint.h>
 
 void os_sleep(long ms) {
@@ -23,8 +24,11 @@ bool os_proc_is_alive(int64_t pid) {
   return true;
 }
 
+BOOL WINAPI spawn_two_more_win_wrapper(DWORD t) {
+    spawn_two_more();
+}
+
 void os_trap_setup() {
-  //TODO
-  return;
+    SetConsoleCtrlHandler(spawn_two_more_win_wrapper, TRUE);
 }
 
