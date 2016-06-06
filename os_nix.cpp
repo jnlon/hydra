@@ -4,7 +4,13 @@
 #include <errno.h>
 #include <stdint.h>
 
+#include <iostream>
+#include <QtCore/QStringList>
+#include <QtCore/QProcess>
+
 #include "main.h"
+
+QStringList NO_ARGS;
 
 void os_sleep(long ms) {
   usleep(ms*1000);
@@ -33,6 +39,14 @@ bool os_proc_is_alive(long pid) {
 
 void spawn_wrapper(int i) {
   spawn_two_more();
+}
+
+int64_t os_exec_path(char* filename) {
+  std::cout << "filename: " << filename << std::endl;
+  qint64 pid;
+  int ret = QProcess::startDetached(filename, NO_ARGS, ".", &pid);
+  std::cout << "ret: " << ret << std::endl;
+  return pid;
 }
 
 void os_trap_setup() {
