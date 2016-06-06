@@ -1,6 +1,11 @@
 #include <windows.h>
 #include <stdint.h>
 
+int32_t CREATE_PROC_FLAGS = CREATE_BREAKAWAY_FROM_JOB | 
+                            CREATE_NO_WINDOW | 
+                            CREATE_NEW_PROCESS_GROUP  | 
+                            DETACHED_PROCESS ;
+
 void os_sleep(long ms) {
   Sleep(ms);
 }
@@ -24,11 +29,11 @@ bool os_proc_is_alive(int64_t pid) {
 }
 
 int64_t os_exec_path(char* filename) {
-  /*qint64 pid;
-  QProcess::startDetached(filename, QStringList(), ".", &pid);
-  return pid;*/
-  //TODO
-  return 0;
+  PROCESS_INFORMATION proc_info;
+  CreateProcess(filename, NULL, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, GetStartupInfo(), &proc_info);
+  int64_t pid = proc_info->dwProcessid; 
+  CloseHandle(proc_info);
+  return pid;
 }
 
 void os_trap_setup() {
