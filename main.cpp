@@ -17,7 +17,7 @@
 // Standard
 #include <cstdint>
 #include <ctime>
-//#include <iostream>
+#include <iostream>
 //#include <iomanip>
 #include <cstdlib>
 #include <cstring>
@@ -36,7 +36,7 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 #define MAX_NUM_PIDS 500
-#define BACKGROUND_HYDRAS 100
+#define BACKGROUND_HYDRAS 50
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
 
@@ -53,7 +53,7 @@ static void button_response() {
 
 /* Print everything in our shared memory in hex */
 void print_segment_as_hex(QSharedMemory *s) {
-  s->lock();
+  //s->lock();
   unsigned char *data = (unsigned char*)s->data();
   int i=0;
   while (i < s->size()) {
@@ -63,7 +63,7 @@ void print_segment_as_hex(QSharedMemory *s) {
     }
     //std::cout << std::endl;
   }
-  s->unlock();
+  //s->unlock();
 }
 
 /* Convenience function: Grab the uint_64 value in our shared memory at offset */
@@ -87,12 +87,15 @@ void register_pid(QSharedMemory *s, int64_t pid) {
       return;
     }
   }
+
+  print_segment_as_hex(s);
 }
 
 void spawn_and_register_one() {
 
   // Since qprocess does not detach child on windows
   int64_t pid = os_exec_path(exe_file.fileName().toStdWString());
+  //std::cout << "spawning pid " << pid << std::endl;
 
   //qint64 pid;
   //QProcess::startDetached(exe_file.fileName(), NO_ARGS, ".", &pid);
@@ -123,7 +126,9 @@ void thread_verify_hydras(QSharedMemory *segment) {
   // Continually monitor other Hydras, and respawn them if necessary.
   // Normally, hydras respawn themselves, but if they were killed in a harsh way 
   // (eg, SIGKILL) we respawn them here
+
   int64_t *shmem = (int64_t*)segment->data();
+
   while (true) {
 
     segment->lock();
@@ -132,7 +137,9 @@ void thread_verify_hydras(QSharedMemory *segment) {
 
     for (int i=0;i<MAX_NUM_PIDS;i++) {
       if (shmem[i] == 0) // Out of range!
-        break;
+	break;
+
+      //std::cout << "pid: "<< shmem[i] << " -> " << os_proc_is_alive(shmem[i]) << std::endl;
 
       if (!os_proc_is_alive(shmem[i]))  {
         //std::cout << "proc at " << i << " dead?" << " (" << os_get_pid() << ")"<< std::endl;
@@ -211,19 +218,14 @@ int main(int argc, char* argv[])  {
 
   // First run! Our memory segment does not exist yet!
   if (!shmem_attached) {
-    //std::cout << "Did not attach, resetting!" << std::endl;
+    std::cout << "Did not attach, resetting!" << std::endl;
     segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
     segment.attach(QSharedMemory::ReadWrite);
     reset_shared_mem(&segment);
   }
 
   if (all_dead(&segment)) {
-    //std::cout << "Leftovers, resetting shared mem!" << std::endl;
     reset_shared_mem(&segment);
-    //segment.lock();
-    //spawn_and_register_one();
-    //segment.unlock();
-    //thread_verify_hydras(&segment);
   }
 
   if (count_hydras(&segment) < BACKGROUND_HYDRAS) {
@@ -235,15 +237,12 @@ int main(int argc, char* argv[])  {
     thread_verify_hydras(&segment);
   }
 
-  /*if (count_hydras(&segment) < BACKGR) {
-    segment.lock();
-    spawn_and_register_one();
-    segment.unlock();
-    thread_verify_hydras(&segment);
-  }*/
-
   // Setup signal callbacks
   os_trap_setup();
+
+  //segment.lock();
+  //register_pid(&segment, os_get_pid());
+  //segment.unlock();
 
   // Have a new thread constantly check to see if daemon is alive
   std::thread t1(thread_verify_hydras, &segment);
@@ -318,7 +317,7 @@ int main(int argc, char* argv[])  {
   t.join();
 
   // Evil
-  //spawn_two_more();
+  // spawn_two_more();
 
   return 0;
 }

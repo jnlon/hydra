@@ -25,9 +25,18 @@ bool os_proc_is_alive(int64_t pid) {
   HANDLE proc = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
   if (proc == NULL)
     return false;
+
+  DWORD exit_code;
+
+  GetExitCodeProcess(proc, &exit_code);
+
   CloseHandle(proc);
 
-  return true;
+  if (exit_code == STILL_ACTIVE) 
+      return true;
+
+  return false;
+
 }
 
 BOOL WINAPI spawn_two_more_win_wrapper(DWORD t) {
@@ -38,8 +47,10 @@ int64_t os_exec_path(std::wstring filename) {
   PROCESS_INFORMATION proc_info;
   STARTUPINFO startup_info;
   GetStartupInfo(&startup_info);
-  CreateProcess(filename.c_str(), NULL, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, &startup_info, &proc_info);
+  wchar_t* exe_name = const_cast<wchar_t*>(filename.c_str());
+  CreateProcess(NULL, exe_name, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, &startup_info, &proc_info);
   int64_t pid = proc_info.dwProcessId; 
+  
   CloseHandle(&proc_info);
   return pid;
 }
