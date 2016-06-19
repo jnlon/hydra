@@ -41,11 +41,11 @@ void spawn_wrapper(int i) {
   spawn_two_more();
 }
 
-int64_t os_exec_path(std::wstring filename) {
-  std::cout << "filename: " << filename << std::endl;
+int64_t os_exec_path(QString filename) {
+  //std::cout << "filename: " << filename.toStdString() << std::endl;
   qint64 pid;
   int ret = QProcess::startDetached(filename, NO_ARGS, ".", &pid);
-  std::cout << "ret: " << ret << std::endl;
+  //std::cout << "ret: " << ret << std::endl;
   return pid;
 }
 

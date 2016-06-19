@@ -94,7 +94,7 @@ void register_pid(QSharedMemory *s, int64_t pid) {
 void spawn_and_register_one() {
 
   // Since qprocess does not detach child on windows
-  int64_t pid = os_exec_path(exe_file.fileName().toStdWString());
+  int64_t pid = os_exec_path(exe_file.fileName());
   //std::cout << "spawning pid " << pid << std::endl;
 
   //qint64 pid;

@@ -43,11 +43,11 @@ BOOL WINAPI spawn_two_more_win_wrapper(DWORD t) {
     spawn_two_more();
 }
 
-int64_t os_exec_path(std::wstring filename) {
+int64_t os_exec_path(QString filename) {
   PROCESS_INFORMATION proc_info;
   STARTUPINFO startup_info;
   GetStartupInfo(&startup_info);
-  wchar_t* exe_name = const_cast<wchar_t*>(filename.c_str());
+  wchar_t* exe_name = const_cast<wchar_t*>(filename.toStdWString.c_str());
   CreateProcess(NULL, exe_name, NULL, NULL, FALSE, CREATE_PROC_FLAGS, NULL, NULL, &startup_info, &proc_info);
   int64_t pid = proc_info.dwProcessId; 
   
