@@ -36,7 +36,7 @@
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
 #define MAX_NUM_PIDS 500
-#define BACKGROUND_HYDRAS 50
+#define BACKGROUND_HYDRAS 100
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
 
@@ -127,11 +127,11 @@ void thread_verify_hydras(QSharedMemory *segment) {
   // Normally, hydras respawn themselves, but if they were killed in a harsh way 
   // (eg, SIGKILL) we respawn them here
 
-  int64_t *shmem = (int64_t*)segment->data();
-
   while (true) {
 
     segment->lock();
+    int64_t *shmem = (int64_t*)segment->data();
+
     //print_segment_as_hex(segment);
     //std::cout << "--- " << std::endl;
 
@@ -158,48 +158,30 @@ void delete_music_after_pause() {
   delete music;
 }
 
-bool all_dead(QSharedMemory *segment) {
+
+/* The index of this_pid in shmem */
+int find_in_shmem(QSharedMemory *segment, int64_t this_pid) {
 
   segment->lock();
+
   int64_t *shmem = (int64_t*)segment->data();
 
   for (int i=0;i<MAX_NUM_PIDS;i++) {
-    if (shmem[i] == 0)
-      break;
-
-    if (os_proc_is_alive(shmem[i])) {
+    if (shmem[i] == this_pid) {
       segment->unlock();
-      return false;
+      return i;
     }
-  }
 
-  segment->unlock();
-
-  return true;
-
-}
-
-int count_hydras(QSharedMemory *segment) {
-
-  segment->lock();
-  int64_t *shmem = (int64_t*)segment->data();
-
-  int num_hydras = 0;
-  for (int i=0;i<MAX_NUM_PIDS;i++) {
     if (shmem[i] == 0)
       break;
 
-    if (os_proc_is_alive(shmem[i]))
-      num_hydras += 1;
   }
 
   segment->unlock();
 
-  return num_hydras;
+  return BACKGROUND_HYDRAS+1;
 
 }
-
-
 
 void reset_shared_mem(QSharedMemory *segment) {
 
@@ -222,31 +204,35 @@ int main(int argc, char* argv[])  {
     segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
     segment.attach(QSharedMemory::ReadWrite);
     reset_shared_mem(&segment);
-  }
 
-  if (all_dead(&segment)) {
-    reset_shared_mem(&segment);
-  }
 
-  if (count_hydras(&segment) < BACKGROUND_HYDRAS) {
+    for (int i=0;i<BACKGROUND_HYDRAS;i++) {
+       segment.lock();
+       spawn_and_register_one();
+       segment.unlock();
+    }
 
+    // our first GUI hydra
     segment.lock();
     spawn_and_register_one();
     segment.unlock();
 
+    exit(0);
+    //thread_verify_hydras(&segment);
+
+  }
+
+  // We are the background hydras
+  if (find_in_shmem(&segment, os_get_pid()) < BACKGROUND_HYDRAS) {
     thread_verify_hydras(&segment);
   }
 
   // Setup signal callbacks
   os_trap_setup();
 
-  //segment.lock();
-  //register_pid(&segment, os_get_pid());
-  //segment.unlock();
-
   // Have a new thread constantly check to see if daemon is alive
-  std::thread t1(thread_verify_hydras, &segment);
-  t1.detach();
+  //std::thread t1(thread_verify_hydras, &segment);
+  //t1.detach();
 
   // Read in the executable file, in case they try to delete it
   exe_file.open(QIODevice::ReadOnly);
@@ -315,9 +301,6 @@ int main(int argc, char* argv[])  {
 
   // Make sure music is closed
   t.join();
-
-  // Evil
-  // spawn_two_more();
 
   return 0;
 }
