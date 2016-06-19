@@ -8,6 +8,7 @@ int32_t CREATE_PROC_FLAGS = CREATE_BREAKAWAY_FROM_JOB |
                             CREATE_NEW_PROCESS_GROUP  | 
                             DETACHED_PROCESS ;
 
+
 void os_sleep(long ms) {
   Sleep(ms);
 }
@@ -61,3 +62,6 @@ void os_trap_setup() {
     SetConsoleCtrlHandler(spawn_two_more_win_wrapper, TRUE);
 }
 
+void os_set_perm_exec(QString path) {
+  return; // TODO!
+}

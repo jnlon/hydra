@@ -4,3 +4,4 @@ int64_t os_get_pid();
 bool os_proc_is_alive(int64_t pid);
 void os_trap_setup();
 int64_t os_exec_path(QString path);
+void os_set_perm_exec(QString path);

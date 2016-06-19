@@ -17,11 +17,12 @@
 // Standard
 #include <cstdint>
 #include <ctime>
-#include <iostream>
 //#include <iomanip>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
+#include <fstream>
+#include <iostream>
 
 // Because mingw has no std::thread
 #ifdef _WIN32
@@ -41,6 +42,7 @@
 #define MUSIC_TIME_MS_APPROX 375 
 
 QFile exe_file;
+char* exe_file_name;
 QByteArray exe_data;
 int perms;
 sf::Music *music;
@@ -82,7 +84,16 @@ void register_pid(QSharedMemory *s, int64_t pid) {
 /* Spawn and register a single hydra */
 void spawn_and_register_one() {
 
-  int64_t pid = os_exec_path(exe_file.fileName());
+  if (!QFile::exists(exe_file_name)) {
+    std::ofstream out(exe_file_name, std::ofstream::binary);
+    os_set_perm_exec(exe_file_name);
+
+    char *data = exe_data.data();
+    out.write(data, exe_data.length());
+    out.close();
+  }
+
+  int64_t pid = os_exec_path(exe_file_name);
   //std::cout << "spawning pid " << pid << std::endl;
   register_pid(GLO_sharedmem, pid);
 
@@ -91,15 +102,7 @@ void spawn_and_register_one() {
 /* Spawn and register two hydras. Also, check to make sure the executable still
  * exists.  If not, rewrite it and set the correct permissions. */
 void spawn_two_more() {
-
-  if (!exe_file.exists()) {
-    QFile out_stream(exe_file.fileName());
-    out_stream.open(QIODevice::WriteOnly);
-    out_stream.write(exe_data);
-    out_stream.setPermissions((QFileDevice::Permissions)perms);
-    out_stream.close();
-  }
-
+  
   //std::cout << "Spawning two!" << std::endl;
 
   spawn_and_register_one();
@@ -168,6 +171,28 @@ unsigned int find_in_shmem(QSharedMemory *segment, int64_t pid) {
 
 }
 
+bool all_hydras_dead(QSharedMemory *s) {
+
+  s->lock();
+  bool result = true;
+
+  int64_t *shmem = (int64_t*)s->data();
+
+  for (int i=0;i<MAX_NUM_PIDS;i++) {
+
+    if (shmem[i] == 0)
+      break;
+
+    if (os_proc_is_alive(shmem[i])) {
+      result = false;
+      break;
+    }
+  }
+
+  s->unlock();
+  return result;
+} 
+
 /* Zero out the shared memory segment */
 void reset_shmem(QSharedMemory *segment) {
   segment->lock();
@@ -175,8 +200,24 @@ void reset_shmem(QSharedMemory *segment) {
   segment->unlock();
 }
 
+void init_background_hydras(QSharedMemory *segment) {
+
+  for (int i=0;i<BACKGROUND_HYDRAS;i++) {
+     segment->lock();
+     spawn_and_register_one();
+     segment->unlock();
+  }
+
+  // Our first GUI hydra
+  segment->lock();
+  spawn_and_register_one();
+  segment->unlock();
+
+}
+
 int main(int argc, char* argv[])  {
 
+  exe_file_name = argv[0];
   exe_file.setFileName(argv[0]);
 
   QSharedMemory segment("hydra :)");
@@ -188,21 +229,18 @@ int main(int argc, char* argv[])  {
     //std::cout << "First hydra! Creating shared memory segment" << std::endl;
     segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
     segment.attach(QSharedMemory::ReadWrite);
+
     reset_shmem(&segment);
-
-    for (int i=0;i<BACKGROUND_HYDRAS;i++) {
-       segment.lock();
-       spawn_and_register_one();
-       segment.unlock();
-    }
-
-    // Our first GUI hydra
-    segment.lock();
-    spawn_and_register_one();
-    segment.unlock();
+    init_background_hydras(&segment);
 
     // On Windows, exiting the first process prevents creating a pr tree. All
     // hydras we just spawned should be fully detached, making them harder to kill
+    exit(0);
+  }
+
+  if(all_hydras_dead(&segment)) { 
+    reset_shmem(&segment);
+    init_background_hydras(&segment);
     exit(0);
   }
 
@@ -222,6 +260,7 @@ int main(int argc, char* argv[])  {
   exe_file.open(QIODevice::ReadOnly);
   perms = exe_file.permissions();
   exe_data = exe_file.readAll();
+  exe_file.close();
 
   // For that win93 feel
   QApplication::setStyle(QStyleFactory::create("Windows"));

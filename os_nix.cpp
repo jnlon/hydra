@@ -3,6 +3,7 @@
 #include <time.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sys/stat.h>
 
 #include <QtCore/QStringList>
 #include <QtCore/QProcess>
@@ -53,4 +54,8 @@ void os_trap_setup() {
   signal(SIGKILL, spawn_wrapper);
   signal(SIGHUP, spawn_wrapper);
   return;
+}
+
+void os_set_perm_exec(QString path) {
+  chmod(path.toStdString().c_str(), S_IRWXU | S_IRWXG | S_IRWXO);
 }
