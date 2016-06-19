@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <stdint.h>
 
-#include <iostream>
 #include <QtCore/QStringList>
 #include <QtCore/QProcess>
 
@@ -42,10 +41,8 @@ void spawn_wrapper(int i) {
 }
 
 int64_t os_exec_path(QString filename) {
-  //std::cout << "filename: " << filename.toStdString() << std::endl;
   qint64 pid;
   int ret = QProcess::startDetached(filename, NO_ARGS, ".", &pid);
-  //std::cout << "ret: " << ret << std::endl;
   return pid;
 }
 

